@@ -383,6 +383,121 @@ class AsianOptionPricer(nn.Module):
         return S.mean().expand_as(S)
 
 
+class PoissonJumpPricer(nn.Module):
+    """
+    Pricing under Pure Jump Process (Poisson Noise) using Analytical Solution.
+    
+    Model: dS_t = (r - σλ) S dt + σ S dP_t (Risk Neutral) or similar.
+    The analytical pricing formula is derived based on the CCDF of the Poisson distribution,
+    which is related to the regularized lower incomplete gamma function P(s, x).
+
+    Formula:
+    C = S * Q(k*, λ(1+σ)T) - K * e^{-rT} * Q(k*, λT)
+    where Q(k, μ) = P(X >= k | X ~ Poi(μ)) = torch.igamma(k, μ) 
+    and k* is the minimum number of jumps required to be in-the-money.
+    """
+    
+    def __init__(self, lambda_val: float = 1.0):
+        super().__init__()
+        self.lambda_val = lambda_val
+        
+    def forward(
+        self,
+        S: torch.Tensor,
+        K: torch.Tensor,
+        jump_size: torch.Tensor, # This is 'sigma' in the formula
+        T: torch.Tensor,
+        r: float = 0.0
+    ) -> torch.Tensor:
+        """
+        Args:
+            S: Current stock price
+            K: Strike price
+            jump_size: Magnitude of jump (σ), interpreted as percentage gain per jump
+            T: Time to maturity
+            r: Risk-free rate
+        """
+        device = S.device
+        
+        # Avoid division by zero in log(1+sigma)
+        sigma = jump_size.clamp(min=1e-6)
+        
+        # 1. Calculate critical jump count k*
+        # S_T(k) = S * exp((r - sigma*lambda) * T) * (1+sigma)^k
+        # S_T(k) > K  =>  k * ln(1+sigma) > ln(K/S) - (r - sigma*lambda)*T
+        
+        # Risk neutral drift correction: mu = r - sigma * lambda
+        drift = r - sigma * self.lambda_val
+        
+        numerator = torch.log(K / S + 1e-8) - drift * T
+        denominator = torch.log(1.0 + sigma)
+        
+        k_val = numerator / denominator
+        # k* must be an integer, so we take ceil. 
+        # Also k* must be >= 0.
+        k_star = torch.ceil(k_val)
+        k_star = torch.clamp(k_star, min=0.0)
+        
+        # 2. Calculate Poisson Parameters
+        lambda_T = self.lambda_val * T
+        lambda_prime_T = self.lambda_val * (1.0 + sigma) * T
+        
+        # 3. Calculate terms using Regularized Lower Incomplete Gamma Function
+        # torch.igamma(a, x) = P(a, x) = 1/Gamma(a) * int_0^x t^{a-1} e^{-t} dt
+        # Wait, the relation is P(X >= k) = P(k, lambda) (Regularized Lower Gamma)
+        # Yes, P(k, lambda) corresponds to the probability of having AT LEAST k events
+        # BUT we need to handle k*=0 case.
+        # If k*=0, P(X>=0) = 1.
+        # torch.igamma(0, x) is 1.0 in standard math definition P(0,x)=1?
+        # Actually P(0, x) = 1/Gamma(0) * ... Gamma(0) is inf.
+        # Let's handle k*=0 separately or use k_star + epsilon if problematic?
+        # Actually PyTorch might handle igamma(0, x) -> 1? 
+        # Let's use a safe k_star for igamma.
+        
+        # If k_star is exactly 0, igamma(0, x) might be nan.
+        # Let's map 0 to a small epsilon? Or use logic:
+        # P(X >= 0) is 1.0.
+        # Also P(X >= k) increases as k decreases.
+        
+        # To be safe and vectorized:
+        # P(X >= k) = torch.igamma(k, lambda)
+        
+        # Use simple trick: if k_star < 1e-4, result is 1.0.
+        # But we need differentiability.
+        # Let's trust torch.igamma behaves or add 1e-6 to k_star if it's 0 is dangerous.
+        # Gamma(0) is undefined.
+        # But conceptually for Poisson, k is integer.
+        
+        # New approach: Use torch.igammac (Upper) which is Q(a,x) and P(a, x) + Q(a, x) = 1.
+        # Q(k, lambda) matches P(X < k).
+        # We want P(X >= k). So 1 - Q(k, lambda) ? NO.
+        # Relation: P(X <= k-1) = Q(k, lambda) (Regularized Upper).
+        # So P(X >= k) = 1 - P(X <= k-1) = 1 - Q(k, lambda) = P(k, lambda) = igamma(k, lambda).
+        
+        # It seems the result IS igamma(k, lambda).
+        # For k=0, igamma(0, lambda) should be 1.
+        # Let's check if 0 causes issues.
+        # If it does, we can use k_star + 1e-9 ? 
+        # Gamma(epsilon) is large but finite.
+        
+        # Let's shift k_star slightly to avoid exact integer 0 if that's an issue,
+        # but k_star is a float tensor here.
+        # We will add 1e-6 to k_star just in case it is exactly 0.
+        k_star_safe = k_star + 1e-9
+        
+        term1_prob = torch.igamma(k_star_safe, lambda_prime_T)
+        term2_prob = torch.igamma(k_star_safe, lambda_T)
+        
+        term1 = S * term1_prob
+        discount = torch.exp(-r * T)
+        term2 = K * discount * term2_prob
+        
+        C = term1 - term2
+        
+        # Ensure non-negative price
+        return torch.clamp(C, min=0.0)
+
+
 class OptionPricingEngine(nn.Module):
     """
     Unified option pricing engine for Equity-MARL.
@@ -396,14 +511,16 @@ class OptionPricingEngine(nn.Module):
         method: str = 'black_scholes',
         n_tree_steps: int = 50,
         window_size: int = 10,
-        epsilon: float = 1e-8
+        epsilon: float = 1e-8,
+        lambda_val: float = 5.0
     ):
         """
         Args:
-            method: 'black_scholes', 'binomial', or 'asian'
+            method: 'black_scholes', 'binomial', 'asian', or 'poisson'
             n_tree_steps: Steps for binomial tree
             window_size: Window for Asian option averaging
             epsilon: Numerical stability
+            lambda_val: Poisson intensity for 'poisson' method
         """
         super().__init__()
         self.method = method
@@ -411,6 +528,7 @@ class OptionPricingEngine(nn.Module):
         self.bs_pricer = BlackScholesLayer(epsilon)
         self.binomial_pricer = BinomialTreePricer(n_tree_steps)
         self.asian_pricer = AsianOptionPricer(window_size, epsilon)
+        self.poisson_pricer = PoissonJumpPricer(lambda_val=lambda_val)
     
     def forward(
         self,
@@ -448,6 +566,14 @@ class OptionPricingEngine(nn.Module):
             C, K_float = self.asian_pricer(S, S_history, sigma, T, r)
             result['price'] = C
             result['strike'] = K_float
+
+        elif self.method == 'poisson':
+            # sigma is interpreted as jump size magnitude
+            C = self.poisson_pricer(S, K, sigma, T, r)
+            result['price'] = C
+            result['strike'] = K
+            
+        return result
         
         return result
 

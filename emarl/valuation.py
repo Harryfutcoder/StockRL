@@ -220,12 +220,17 @@ class ValuationEngine(nn.Module):
         )
         
         # Option pricer (import here to avoid circular dependency)
-        from .option_pricing import BlackScholesLayer, BinomialTreePricer
+        from .option_pricing import BlackScholesLayer, BinomialTreePricer, PoissonJumpPricer
         
         if option_method == 'black_scholes':
             self.option_pricer = BlackScholesLayer()
-        else:
+        elif option_method == 'binomial':
             self.option_pricer = BinomialTreePricer()
+        elif option_method == 'poisson':
+            # Use a default lambda that fits the RL episode scale (e.g., 5-10 breakthroughs expected)
+            self.option_pricer = PoissonJumpPricer(lambda_val=5.0)
+        else:
+            self.option_pricer = BlackScholesLayer()
         
         # Total training steps for time-to-maturity calculation
         self.total_steps = 1000  # Will be updated

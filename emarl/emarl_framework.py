@@ -247,6 +247,14 @@ class EquityMARL(nn.Module):
         
         # Step 2: Update valuations (stock prices, option values)
         valuation_result = self.valuation_engine(shapley_values, return_greeks=True)
+
+        # Pricing signal (principal + expectation)
+        # - principal: current agent "stock price" (stateful tracker)
+        # - expectation: option value (growth potential under chosen pricing model)
+        priced_values = valuation_result['prices'] + valuation_result['option_values']
+        pricing_premium = valuation_result['option_values']
+        portfolio_values = priced_values
+        valuation_signal = pricing_premium
         
         # Step 3: Portfolio optimization (Meta-Investor)
         investor_result = self.meta_investor(valuation_result, shapley_values)
@@ -281,6 +289,10 @@ class EquityMARL(nn.Module):
             'exploration_rates': investor_result['exploration_rates'],
             'option_values': valuation_result['option_values'],
             'prices': valuation_result['prices'],
+            'priced_values': priced_values,
+            'pricing_premium': pricing_premium,
+            'portfolio_values': portfolio_values,
+            'valuation_signal': valuation_signal,
             'volatilities': valuation_result['volatilities'],
             'delta': delta,
             'bubble_info': bubble_info,
