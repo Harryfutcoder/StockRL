@@ -124,23 +124,30 @@ And the action value function can be defined as:
 Q^\pi(s, a) & = r(s,a) + \gamma \sum_{s'\in S} P(s'|s,a) C_{t+1}(s')\\
             & = r(s,a) + \gamma \mathbb{E}_{s' \sim \mathbb{P}} \left[ e^{-r(T-(t+1))} \mathbb{E}^{\mathbb{Q}}[R_T | \mathcal{F}_{t+1}] \right]
 \end{align*}
-We observe a double expectation structure involving both the physical measure $\mathbb{P}$ (environment transition) and the risk-neutral measure $\mathbb{Q}$ (pricing).
-To simplify, we adopt the \textbf{Risk-Neutral RL Assumption}, approximating the environmental dynamics $\mathbb{P}$ with $\mathbb{Q}$.
-By applying the \textbf{Tower Property} (Law of Iterated Expectations) of conditional expectations, i.e., $\mathbb{E}_t[\mathbb{E}_{t+1}[X]] = \mathbb{E}_t[X]$, and assuming the discount factor satisfies $\gamma = e^{-r}$, the double expectation collapses:
 
+We introduce the measure transformation technique via the Radon--Nikodym derivative.
+
+\begin{theorem}[Radon--Nikodym Derivative]
+Let $(\Omega,\mathcal{F})$ be a measurable space and let $\mathbb{Q} \ll \mathbb{P}$ with
+Radon--Nikodym density $\Lambda := \frac{\mathrm{d}\mathbb{Q}}{\mathrm{d}\mathbb{P}}$. Then for any
+integrable random variable $X$ and any sub-$\sigma$-algebra $\mathcal{G} \subseteq \mathcal{F}$, we have
 \[
-\mathbb{E}^{\mathbb{Q}}\!\left[ C_{t+1} \,\middle|\, \mathcal{F}_t \right]
-= e^{-r(T-(t+1))} \, \mathbb{E}^{\mathbb{Q}}\!\left[ \mathbb{E}^{\mathbb{Q}}\!\left[ R_T \,\middle|\, \mathcal{F}_{t+1} \right] \,\middle|\, \mathcal{F}_t \right]
-= e^{-r(T-(t+1))} \, \mathbb{E}^{\mathbb{Q}}\!\left[ R_T \,\middle|\, \mathcal{F}_t \right]
-= e^{r} C_t.
+\mathbb{E}^{\mathbb{Q}}[X] = \mathbb{E}^{\mathbb{P}}[\Lambda X], \qquad
+\mathbb{E}^{\mathbb{Q}}[X\mid\mathcal{G}] =
+\frac{\mathbb{E}^{\mathbb{P}}[\Lambda X\mid \mathcal{G}]}{\mathbb{E}^{\mathbb{P}}[\Lambda\mid \mathcal{G}]}
 \]
-Therefore, with $\gamma=e^{-r}$, we obtain $\gamma\,\mathbb{E}^{\mathbb{Q}}[C_{t+1}\mid\mathcal{F}_t]=C_t$.
+whenever the denominators are almost surely positive.
+\end{theorem}
 
-Therefore, under this option-pricing interpretation, and with the approximation $\mathbb{P}\approx\mathbb{Q}$ together with $\gamma=e^{-r}$, the Bellman update reduces to a simple one-step form in which the option price $C_t$ can be used directly as the bootstrapped value:
-\begin{equation}
-Q^\pi(s, a) \approx r(s,a) + C_t(s)
-\end{equation}
-This suggests that, rather than learning the value function purely from data, one can use the Levy option price as a model-informed proxy for the state value.
+Applying this to $X = R_T$ and $\mathcal{G} = \mathcal{F}_{t+1}$ with $\Lambda_T := \frac{\mathrm{d}\mathbb{Q}}{\mathrm{d}\mathbb{P}}\big|_{\mathcal{F}_T}$, the action-value function can be rewritten purely under $\mathbb{P}$ as
+\begin{align*}
+Q^\pi(s, a)
+  & = r(s,a) + \gamma \, \mathbb{E}_{s' \sim \mathbb{P}} \Big[ e^{-r(T-(t+1))} \, \mathbb{E}^{\mathbb{Q}}[R_T \mid \mathcal{F}_{t+1}] \Big] \\
+  & = r(s,a) + \gamma  e^{-r(T-(t+1))}\,\mathbb{E}_{s' \sim \mathbb{P}} \Bigg[  \,
+      \frac{\mathbb{E}^{\mathbb{P}}[\Lambda_T R_T \mid \mathcal{F}_{t+1}]}{\mathbb{E}^{\mathbb{P}}[\Lambda_T \mid \mathcal{F}_{t+1}]}
+    \Bigg].
+\end{align*}
+
 
 
 
