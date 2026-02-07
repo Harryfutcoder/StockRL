@@ -20,7 +20,7 @@
 
 \begin{document}
 
-\title{BSMRL: Estimating with Differential Equations (Draft ver.)}
+\title{BSMRL: A Risk-Sensitive and Time-Aware Framework for ReinforcementLearning (Draft ver.)}
 
 \author{Dongsheng Hou* \\
   Department of Computer Science and Engineering\\
@@ -43,8 +43,8 @@ In this paper, we propose BSMRL, a novel reinforcement learning framework that l
 the Black-Scholes-Merton (BSM) model for reward shaping. By integrating financial mathematics 
 into the RL paradigm, BSMRL aims to enhance learning efficiency and stability in environments 
 with sparse and delayed rewards. We further extend our approach by incorporating the Merton 
-Jump-Diffusion Model to account for sudden changes in the environment, providing a more robust 
-framework for real-world applications. Experimental results demonstrate that BSMRL outperforms 
+Jump-Diffusion Model to account for sudden changes in the environment, providing a risk-sensitive
+and time-aware framework. Experimental results demonstrate that BSMRL outperforms 
 traditional RL methods in various benchmark tasks, showcasing its potential for broader 
 applications in software testing, quantitative finance, embodied AI, and beyond.
 \end{abstract}
@@ -54,6 +54,21 @@ applications in software testing, quantitative finance, embodied AI, and beyond.
 \newpage
 
 \section{Introduction}
+
+In the original Temporal-Difference (TD) learning framework, the agent learns to estimate the value function based on one-step transitions.
+However, in real-world scenarios, rewards can be sparse and delayed, making it challenging for agents to learn effective policies.
+
+Here, we propose BSMRL, a novel reinforcement learning framework that leverages the Black-Scholes-Merton (BSM) model for reward shaping.
+By integrating financial mathematics into the RL paradigm, BSMRL aims to enhance learning efficiency and stability in environments with sparse and delayed rewards.
+The BSM model provides a closed-form solution for European-style options, which can be adapted to shape rewards based on the agent's current state and time-to-go.
+This approach provides more informative feedback to the agent, guiding its learning process. We treat the option price as a advanced 
+exploration bonus for the agent, which encourages it to explore states randomly and discover potential rewards, even when immediate rewards are sparse.
+
+However, we note that the BSM model assumes that the noise in the environment is Gaussian, which may not hold 
+when the environment exhibits sudden changes or jumps. To address this limitation, we extend our approach by incorporating the Merton Jump-Diffusion Model, 
+which accounts for jumps in the underlying asset price dynamics. This method however, lead to the uncertainty 
+in the convergence of the value estimates, thus we introduce an adapted decaying mechanism for the jump intensity parameter in the Merton model, 
+which helps stabilize the learning process, guaranteeing the convergence of the value estimates.
 
 \section{Related Works}
 
@@ -100,10 +115,11 @@ For instance, in Monte-Carlo methods, we estimate the expected return over an ep
 This is analogous to option pricing, where the option's value depends on the underlying asset price and time to maturity. These method often 
 suffer from slow convergence rate due to sparse rewards, e.g., in website bug mining, the agent only receives a reward when a bug is found, which may take a long time.
 
-We assume that the noise in the environment follows a log-normal distribution, similar to asset price movements in financial markets.
-By mapping the agent's state to a proxy asset price and time-to-go to time-to-maturity, we can compute a potential function using the BSM formula.
-Thus, though the environment may not provide frequent rewards, the agent can still receive continuous feedback through the potential-based shaping rewards derived from the BSM model, 
-which helps reduce variance and accelerates learning.
+By mimicing the idea of option pricing, we use the BSM formula and its derivatives to shape the expected accumulated reward, providing power for the agent to discover
+although the immediate reward is sparse. The method will provide a time-sensitive potential shaping reward, which can be viewed as an additional reward signal that guides the agent towards more promising states and actions.
+
+However, such model assumes that the noise in the environment is Gaussian, which may not hold 
+when the environment exhibits sudden changes or jumps. To address this limitation, we extend our approach by incorporating the Merton Jump-Diffusion Model, which accounts for jumps in the underlying asset price dynamics.
 
 \subsection{Merton Jump Model}
 
@@ -169,6 +185,12 @@ Specifically, we update $\lambda$ as follows:
 \end{equation}
 And we sample the observed time period $T$ from $\Gamma(1, \lambda)$.
 
+\paragraph{Rationale} If in real environment, within times $T$, we observe less jumps than expected $\lambda T$,
+it indicates that the jump intensity $\lambda$ is overestimated. To address this, we introduce an adapted decaying mechanism for $\lambda$.
+By adjusting $\lambda$ based on observed jump counts, we ensure that the model remains responsive to actual environmental dynamics,
+thus stabilizing the learning process and improving convergence of value estimates. Then, we 
+sample $T$ from $\Gamma(1, \lambda)$ to reflect the updated jump intensity. 
+
 
 \section{Algorithm Framework}
 
@@ -181,7 +203,7 @@ used to compute the Merton potential shaping reward.
 \caption{BSMRL}
 \label{alg:bsmrl_merton}
 \begin{algorithmic}[1]
-\State \textbf{Hyperparameters:} Learning rate $\alpha$, Discount factor $\gamma$, Moving average rate $\eta$ (for statistics), Maturity $T$, Risk-free rate $r$, Jump mean $\mu_J$, Jump std $\delta_J$, Expansion terms $K$.
+\State \textbf{Hyperparameters:} Learning rate $\alpha$, Discount factor $\gamma$, Moving average rate $\eta$ (for statistics), Maturity $T$, Risk-free rate $r = -\ln{\gamma}$, Jump mean $\mu_J$, Jump std $\delta_J$, Expansion terms $K$.
 \State \textbf{Initialize:} 
 \State $Q(s, a)$ arbitrarily.
 \State $\bar{R}(s, a) \leftarrow 0$ \Comment{Predictable Reward Component }
