@@ -1,9 +1,9 @@
-\documentclass[a4paper， UTF-8]{article}
-\usepackage{geometry}
+\documentclass{article}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{amsmath}
 \usepackage{amsfonts}
+\usepackage{iclr2026_conference}
 \usepackage{amsthm}
 \theoremstyle{plain}
 \newtheorem{theorem}{\indent Theorem}[section]
@@ -37,6 +37,17 @@
 
 
 \maketitle
+
+\begin{abstract}
+In this paper, we propose BSMRL, a novel reinforcement learning framework that leverages 
+the Black-Scholes-Merton (BSM) model for reward shaping. By integrating financial mathematics 
+into the RL paradigm, BSMRL aims to enhance learning efficiency and stability in environments 
+with sparse and delayed rewards. We further extend our approach by incorporating the Merton 
+Jump-Diffusion Model to account for sudden changes in the environment, providing a more robust 
+framework for real-world applications. Experimental results demonstrate that BSMRL outperforms 
+traditional RL methods in various benchmark tasks, showcasing its potential for broader 
+applications in software testing, quantitative finance, embodied AI, and beyond.
+\end{abstract}
 
 \tableofcontents
 
@@ -201,15 +212,14 @@ used to compute the Merton potential shaping reward.
         \State Choose action $a$ (e.g., $\epsilon$-greedy based on $Q$)
         \State Take action $a$, observe reward $R_{obs}$ and next state $s'$
         
-        \State $\delta_{pred} \leftarrow R_{obs} - \bar{R}(s, a)$ \Comment{Chaotic innovation [cite: 121]}
-        \State $\bar{R}(s, a) \leftarrow \bar{R}(s, a) + \eta \cdot \delta_{pred}$ \Comment{Update Predictable Component [cite: 170]}
+        \State $\delta_{pred} \leftarrow R_{obs} - \bar{R}(s, a)$ \Comment{Chaotic innovation}
+        \State $\bar{R}(s, a) \leftarrow \bar{R}(s, a) + \eta \cdot \delta_{pred}$ \Comment{Update Predictable Component}
         \State $\Sigma^2_{chaos}(s, a) \leftarrow (1-\eta)\Sigma^2_{chaos}(s, a) + \eta \cdot (\delta_{pred})^2$ \Comment{Update Chaotic Variance }
         
-        \If{$(\delta_{pred})^2 > 3 \cdot \Sigma^2_{chaos}(s, a)$}
-            \State $\lambda_{jump}(s, a) \leftarrow (1-\eta)\lambda_{jump}(s, a) + \eta \cdot 1$ \Comment{Detect sparse jump}
-        \Else
-            \State $\lambda_{jump}(s, a) \leftarrow (1-\eta)\lambda_{jump}(s, a)$
-        \EndIf
+     
+        \State $\lambda_{jump}(s) \gets \lambda_{jump}(s) \exp(-\beta(\frac{(V_{t} - V_{t-T})}{\lambda_{jump}(s)} - \lambda_{jump}(s) T))$ 
+        \State $T \gets \Gamma(1,\lambda_{jump}(s))$ \Comment{Adapted Decaying for Jump Intensity}
+
 
         \State $a'_{best} \leftarrow \arg\max_{a'} Q(s', a')$
         \State $S_{underlying} \leftarrow Q(s', a'_{best})$ \Comment{Underlying asset is the naive value}
@@ -218,7 +228,6 @@ used to compute the Merton potential shaping reward.
         
         \State $Y_{target} \leftarrow R_{obs} + \gamma \cdot V_{enhanced}(s')$ \Comment{Maximize Option-Adjusted Return}
         
-        \State \Comment{\textbf{Q-Update}}
         \State $Q(s, a) \leftarrow Q(s, a) + \alpha \left( Y_{target} - Q(s, a) \right)$
         
         \State $s \leftarrow s'$
@@ -242,13 +251,13 @@ used to compute the Merton potential shaping reward.
 
 \section{Conclusion}
 
-\begin{thebibliography}{99}
+% \begin{thebibliography}{99}
 
 
-\bibitem{BS1973} The Pricing of Options and Corporate Liabilities, Black and Scholes, 1973
-\bibitem{Merton1974} On the Pricing of Corporate Debt: The Risk Structure of Interest Rates, Merton, 1974
-\bibitem{NSPM2020} Risk-Sensitive Reinforcement Learning: a Martingale Approach to Reward Uncertainty
-\end{thebibliography}
+% \bibitem{BS1973} The Pricing of Options and Corporate Liabilities, Black and Scholes, 1973
+% \bibitem{Merton1974} On the Pricing of Corporate Debt: The Risk Structure of Interest Rates, Merton, 1974
+% \bibitem{NSPM2020} Risk-Sensitive Reinforcement Learning: a Martingale Approach to Reward Uncertainty
+% \end{thebibliography}
 
 
 \appendix 
